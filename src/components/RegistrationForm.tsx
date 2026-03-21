@@ -1,64 +1,12 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, addDoc, query, where, getDocs, serverTimestamp, limit } from "firebase/firestore";
-import { db } from "../firebase";
 import { Registration, Category, FoodPreference, Attending } from "../types";
 import { generatePassPDF } from "../PassGenerator";
 import { motion } from "motion/react";
 import { User, Mail, Phone, Building2, Users, Utensils, Calendar, Send, Loader2 } from "lucide-react";
-import { auth } from "../firebase";
 import EventDetails from "./EventDetails";
 
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-    tenantId: string | null | undefined;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
+const API_URL = import.meta.env.VITE_API_URL || "";
 
 export default function RegistrationForm() {
   const navigate = useNavigate();
@@ -90,58 +38,26 @@ export default function RegistrationForm() {
     setError(null);
 
     try {
-      // Check for duplicate email
-      const path = "registrations";
-      let querySnapshot;
-      try {
-        const q = query(collection(db, path), where("email", "==", formData.email), limit(1));
-        querySnapshot = await getDocs(q);
-      } catch (err) {
-        handleFirestoreError(err, OperationType.LIST, path);
+      // 1. Register via Backend
+      const registerRes = await fetch(`${API_URL}/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+
+      const registerData = await registerRes.json();
+      if (!registerData.success) {
+        throw new Error(registerData.error || "Failed to register.");
       }
 
-      if (querySnapshot && !querySnapshot.empty) {
-        throw new Error("This email is already registered.");
-      }
+      const registration = registerData.registration;
 
-      // Generate unique token
-      const randomId = Math.random().toString(36).substring(2, 6).toUpperCase();
-      const tokenId = `SESWA22-${randomId}`;
-      const entryPassId = `PASS-${randomId}`;
-      const lunchTokenId = `LUNCH-${randomId}`;
-      const dinnerTokenId = `DINNER-${randomId}`;
+      // 2. Generate PDF
+      const pdfBase64 = await generatePassPDF({ ...registration });
 
-      const registration: Registration = {
-        ...formData,
-        tokenId,
-        entryPassId,
-        lunchTokenId,
-        dinnerTokenId,
-        entryScanned: false,
-        lunchScanned: false,
-        dinnerScanned: false,
-        createdAt: new Date().toISOString(),
-      };
-
-      // Save to Firestore
-      let docRef;
+      // 3. Send email via Backend
       try {
-        docRef = await addDoc(collection(db, path), {
-          ...registration,
-          createdAt: serverTimestamp(),
-        });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.CREATE, path);
-      }
-
-      if (!docRef) throw new Error("Failed to save registration.");
-
-      // Generate PDF
-      const pdfBase64 = await generatePassPDF({ ...registration, id: docRef.id });
-
-      // Send email via API
-      try {
-        await fetch("/api/send-email", {
+        await fetch(`${API_URL}/send-email`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -153,12 +69,11 @@ export default function RegistrationForm() {
         });
       } catch (emailErr) {
         console.error("Failed to send email:", emailErr);
-        // We don't block the user if email fails, but we should log it
       }
 
-      // Send WhatsApp via API
+      // 4. Send WhatsApp via Backend
       try {
-        await fetch("/api/send-whatsapp", {
+        await fetch(`${API_URL}/send-whatsapp`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -173,7 +88,7 @@ export default function RegistrationForm() {
       }
 
       // Navigate to success page
-      navigate("/success", { state: { registration: { ...registration, id: docRef.id }, pdfBase64 } });
+      navigate("/success", { state: { registration, pdfBase64 } });
     } catch (err: any) {
       let displayError = err.message || "An error occurred during registration.";
       try {
