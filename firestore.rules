@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        (request.auth.token.email == "sandiphembram2021@gmail.com" && request.auth.token.email_verified == true)
+      );
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidRegistration(data) {
+      let requiredFields = ['fullName', 'email', 'phone', 'category', 'tokenId', 'foodPreference', 'attending', 'numPersons', 'organization'];
+      return data.keys().hasAll(requiredFields) &&
+             data.keys().hasOnly(requiredFields.concat(['entryPassId', 'lunchTokenId', 'dinnerTokenId', 'entryScanned', 'lunchScanned', 'dinnerScanned', 'createdAt'])) &&
+             data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 100 &&
+             isValidEmail(data.email) &&
+             data.phone is string && data.phone.size() >= 10 && data.phone.size() <= 20 &&
+             data.category in ['Student', 'Guest', 'VIP'] &&
+             data.foodPreference in ['Veg', 'Non-Veg'] &&
+             data.attending in ['Lunch', 'Dinner', 'Both'] &&
+             data.numPersons is number && data.numPersons >= 1 && data.numPersons <= 100 &&
+             data.organization is string && data.organization.size() <= 100 &&
+             data.tokenId is string && data.tokenId.size() > 0 && data.tokenId.size() <= 50 &&
+             (!('entryScanned' in data) || data.entryScanned is bool) &&
+             (!('lunchScanned' in data) || data.lunchScanned is bool) &&
+             (!('dinnerScanned' in data) || data.dinnerScanned is bool) &&
+             (!('createdAt' in data) || data.createdAt is timestamp);
+    }
+
+    match /registrations/{registrationId} {
+      // Anyone can create a registration
+      allow create: if isValidRegistration(request.resource.data);
+      
+      // Allow duplicate check (list with limit 1)
+      allow list: if isAdmin() || (request.query.limit <= 1);
+      
+      // Allow pass verification (get by ID)
+      allow get: if true;
+
+      // Only admins can update (e.g. mark as scanned)
+      allow update: if isAdmin() && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['entryScanned', 'lunchScanned', 'dinnerScanned']);
+      
+      // Only admins can delete
+      allow delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
+    }
+  }
+}

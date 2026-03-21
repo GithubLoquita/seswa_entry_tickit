@@ -1,0 +1,34 @@
+{
+  "entities": {
+    "Registration": {
+      "title": "Registration",
+      "description": "User registration for the SESWA event",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string", "description": "Full Name of the user" },
+        "email": { "type": "string", "format": "email", "description": "Email ID" },
+        "phone": { "type": "string", "description": "Phone Number" },
+        "category": { "type": "string", "enum": ["Student", "Guest", "VIP"], "description": "Category of the user" },
+        "organization": { "type": "string", "description": "College / Organization Name" },
+        "numPersons": { "type": "number", "description": "Number of Persons" },
+        "foodPreference": { "type": "string", "enum": ["Veg", "Non-Veg"], "description": "Food Preference" },
+        "attending": { "type": "string", "enum": ["Lunch", "Dinner", "Both"], "description": "Attending sessions" },
+        "tokenId": { "type": "string", "description": "Unique Token ID" },
+        "entryPassId": { "type": "string", "description": "Entry Pass ID" },
+        "lunchTokenId": { "type": "string", "description": "Lunch Token ID" },
+        "dinnerTokenId": { "type": "string", "description": "Dinner Token ID" },
+        "entryScanned": { "type": "boolean", "description": "Whether entry pass is scanned" },
+        "lunchScanned": { "type": "boolean", "description": "Whether lunch token is scanned" },
+        "dinnerScanned": { "type": "boolean", "description": "Whether dinner token is scanned" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Registration time" }
+      },
+      "required": ["fullName", "email", "phone", "category", "tokenId"]
+    }
+  },
+  "firestore": {
+    "registrations": {
+      "schema": "Registration",
+      "description": "Collection of event registrations"
+    }
+  }
+}

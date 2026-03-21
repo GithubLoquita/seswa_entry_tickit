@@ -1,0 +1,5 @@
+{
+  "name": "SESWA WB 22nd Registration",
+  "description": "Online registration system for SESWA WB 22nd Fresher & Cultural Program with QR entry passes and food tokens.",
+  "requestFramePermissions": ["camera"]
+}
