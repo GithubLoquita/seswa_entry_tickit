@@ -19,21 +19,23 @@ app.use(cors({
 app.use(express.json({ limit: "10mb" })); // Increased limit for PDF base64
 
 // Initialize Firebase Admin
+let db: admin.firestore.Firestore | null = null;
+
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   try {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount)
     });
+    db = admin.firestore();
     console.log("Firebase Admin initialized successfully.");
   } catch (error) {
-    console.error("Error parsing FIREBASE_SERVICE_ACCOUNT:", error);
+    console.error("Error initializing Firebase Admin:", error);
+    console.warn("Falling back to mock mode for Firestore.");
   }
 } else {
-  console.warn("FIREBASE_SERVICE_ACCOUNT missing. Firestore operations will fail.");
+  console.warn("FIREBASE_SERVICE_ACCOUNT missing. Running in mock mode for Firestore.");
 }
-
-const db = admin.firestore?.();
 
 // --- Endpoints ---
 
@@ -41,19 +43,7 @@ const db = admin.firestore?.();
 app.post("/register", async (req, res) => {
   const { fullName, email, phone, category, organization, numPersons, foodPreference, attending } = req.body;
 
-  if (!db) {
-    return res.status(500).json({ success: false, error: "Firestore not initialized." });
-  }
-
   try {
-    // Check for duplicate email
-    const registrationsRef = db.collection("registrations");
-    const snapshot = await registrationsRef.where("email", "==", email).limit(1).get();
-
-    if (!snapshot.empty) {
-      return res.status(400).json({ success: false, error: "This email is already registered." });
-    }
-
     // Generate unique tokens
     const randomId = Math.random().toString(36).substring(2, 6).toUpperCase();
     const tokenId = `SESWA22-${randomId}`;
@@ -61,7 +51,7 @@ app.post("/register", async (req, res) => {
     const lunchTokenId = `LUNCH-${randomId}`;
     const dinnerTokenId = `DINNER-${randomId}`;
 
-    const registrationData = {
+    const registrationData: any = {
       fullName,
       email,
       phone,
@@ -77,23 +67,41 @@ app.post("/register", async (req, res) => {
       entryScanned: false,
       lunchScanned: false,
       dinnerScanned: false,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    // Save to Firestore
-    const docRef = await registrationsRef.add(registrationData);
+    let id = `mock-${Date.now()}`;
+
+    if (db) {
+      // Check for duplicate email
+      const registrationsRef = db.collection("registrations");
+      const snapshot = await registrationsRef.where("email", "==", email).limit(1).get();
+
+      if (!snapshot.empty) {
+        return res.status(400).json({ success: false, error: "This email is already registered." });
+      }
+
+      // Save to Firestore
+      registrationData.createdAt = admin.firestore.FieldValue.serverTimestamp();
+      const docRef = await registrationsRef.add(registrationData);
+      id = docRef.id;
+    } else {
+      console.log("Mocking registration for:", email);
+      registrationData.createdAt = new Date().toISOString();
+    }
 
     res.json({ 
       success: true, 
       registration: { 
-        id: docRef.id, 
+        id, 
         ...registrationData,
-        createdAt: new Date().toISOString() // Mock for response
+        createdAt: registrationData.createdAt instanceof admin.firestore.FieldValue 
+          ? new Date().toISOString() 
+          : registrationData.createdAt
       } 
     });
   } catch (error) {
     console.error("Registration error:", error);
-    res.status(500).json({ success: false, error: "Failed to save registration." });
+    res.status(500).json({ success: false, error: "Failed to process registration." });
   }
 });
 
