@@ -1,64 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { useLocation } from "react-router-dom";
-import { getDocFromServer, doc, updateDoc, getDoc, collection, query, where, getDocs, limit } from "firebase/firestore";
-import { db } from "../firebase";
 import { Registration } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { QrCode, CheckCircle2, XCircle, Loader2, User, Utensils, Calendar, ShieldCheck, Keyboard, Search, AlertCircle } from "lucide-react";
 import { cn } from "../utils";
-import { auth } from "../firebase";
 
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-    tenantId: string | null | undefined;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
+const API_URL = import.meta.env.VITE_API_URL || "";
 
 export default function ScannerPage() {
   const location = useLocation();
@@ -124,133 +72,66 @@ export default function ScannerPage() {
   };
 
   useEffect(() => {
-    async function testConnection() {
-      try {
-        await getDocFromServer(doc(db, 'test', 'connection'));
-      } catch (error) {
-        if(error instanceof Error && error.message.includes('the client is offline')) {
-          console.error("Please check your Firebase configuration. ");
-          setError("Firebase is offline. Please check your connection.");
-        }
-      }
-    }
-    testConnection();
-  }, []);
-
-  useEffect(() => {
     const state = location.state as { tokenId?: string };
     if (state?.tokenId) {
       setManualToken(state.tokenId);
       setMode("manual");
       // Auto-verify if tokenId is provided from state
-      verifyUser(state.tokenId, false);
+      verifyUser(state.tokenId);
     }
   }, [location.state]);
 
-  const verifyUser = async (tokenIdOrId: string, isId: boolean = false, overrideScanType?: "entry" | "lunch" | "dinner") => {
+  const verifyUser = async (token: string) => {
     setLoading(true);
     setError(null);
     setSuccess(null);
     setScannedUser(null);
 
-    const activeScanType = overrideScanType || scanType;
-
     try {
-      let userData: Registration | null = null;
-      let docId: string | null = null;
+      const response = await fetch(`${API_URL}/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
 
-      if (isId) {
-        try {
-          const docRef = doc(db, "registrations", tokenIdOrId);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            userData = { id: docSnap.id, ...docSnap.data() } as Registration;
-            docId = docSnap.id;
-          }
-        } catch (err) {
-          handleFirestoreError(err, OperationType.GET, "registrations");
-        }
-      } else {
-        try {
-          const q = query(collection(db, "registrations"), where("tokenId", "==", tokenIdOrId), limit(1));
-          const querySnapshot = await getDocs(q);
-          if (!querySnapshot.empty) {
-            const docSnap = querySnapshot.docs[0];
-            userData = { id: docSnap.id, ...docSnap.data() } as Registration;
-            docId = docSnap.id;
-          }
-        } catch (err) {
-          handleFirestoreError(err, OperationType.LIST, "registrations");
-        }
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.error || "Verification failed.");
       }
 
-      if (!userData || !docId) {
-        throw new Error("Registration not found in database.");
-      }
-
+      const userData = data.registration;
       setScannedUser(userData);
 
-      // Check if already scanned
+      // Check if already scanned for current type
       const isAlreadyScanned = 
-        (activeScanType === "entry" && userData.entryScanned) ||
-        (activeScanType === "lunch" && userData.lunchScanned) ||
-        (activeScanType === "dinner" && userData.dinnerScanned);
+        (scanType === "entry" && userData.entryScanned) ||
+        (scanType === "lunch" && userData.lunchScanned) ||
+        (scanType === "dinner" && userData.dinnerScanned);
 
       if (isAlreadyScanned) {
-        throw new Error(`This ${activeScanType} pass has already been used!`);
+        throw new Error(`This ${scanType} pass has already been used!`);
       }
 
-      // Check if attending the session
-      if (activeScanType === "lunch" && userData.attending === "Dinner") {
-        throw new Error("User is only registered for Dinner.");
-      }
-      if (activeScanType === "dinner" && userData.attending === "Lunch") {
-        throw new Error("User is only registered for Lunch.");
-      }
-
-      setScanResult({ id: docId });
+      setScanResult({ id: userData.id });
     } catch (err: any) {
-      let displayError = err.message || "Failed to process verification.";
-      try {
-        if (err.message && typeof err.message === 'string' && err.message.startsWith('{')) {
-          const parsed = JSON.parse(err.message);
-          if (parsed.error && parsed.error.includes("Missing or insufficient permissions")) {
-            displayError = "Verification error: Missing or insufficient permissions. Only administrators can verify passes.";
-          }
-        }
-      } catch (e) {
-        // Not a JSON error
-      }
-      setError(displayError);
+      setError(err.message || "Failed to process verification.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleScan = async (data: any) => {
-    if (data && !loading && !scannedUser && !isProcessing) {
+  const handleScan = async (decodedText: string) => {
+    if (!loading && !scannedUser && !isProcessing) {
       setIsProcessing(true);
-      setIsScanning(true);
       try {
-        const rawText = data.text || (typeof data === 'string' ? data : "");
-        const parsed = parseQRData(rawText);
-
-        if (!parsed) {
-          setIsScanning(false);
-          setIsProcessing(false);
-          return;
+        const parsed = parseQRData(decodedText);
+        if (parsed) {
+          await verifyUser(parsed.value);
         }
-
-        if (parsed.detectedScanType) {
-          setScanType(parsed.detectedScanType);
-        }
-
-        await verifyUser(parsed.value, parsed.isId, parsed.detectedScanType);
-      } catch (err: any) {
-        console.error("Scan processing error:", err);
-        setError("Invalid QR code format. Please ensure you are scanning a valid SESWA pass.");
+      } catch (err) {
+        console.error("Scan error:", err);
       } finally {
-        setIsScanning(false);
         setIsProcessing(false);
       }
     }
@@ -272,7 +153,7 @@ export default function ScannerPage() {
         setScanType(parsed.detectedScanType);
       }
 
-      await verifyUser(parsed.value.toUpperCase(), parsed.isId, parsed.detectedScanType);
+      await verifyUser(parsed.value.toUpperCase());
       if (!error) setManualToken("");
     } catch (err: any) {
       setError(err.message || "Failed to process verification.");
@@ -284,13 +165,17 @@ export default function ScannerPage() {
     setLoading(true);
 
     try {
-      const docRef = doc(db, "registrations", scannedUser.id);
-      const updateData: any = {};
-      if (scanType === "entry") updateData.entryScanned = true;
-      if (scanType === "lunch") updateData.lunchScanned = true;
-      if (scanType === "dinner") updateData.dinnerScanned = true;
+      const response = await fetch(`${API_URL}/mark-used`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: scannedUser.id, scanType }),
+      });
 
-      await updateDoc(docRef, updateData);
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.error || "Failed to mark as used.");
+      }
       
       // Haptic feedback if supported
       if (navigator.vibrate) {
@@ -304,7 +189,7 @@ export default function ScannerPage() {
       setScannedUser(null);
       setManualToken("");
     } catch (err: any) {
-      handleFirestoreError(err, OperationType.UPDATE, `registrations/${scannedUser.id}`);
+      setError(err.message || "Failed to mark as used.");
     } finally {
       setLoading(false);
     }

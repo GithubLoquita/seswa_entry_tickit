@@ -181,6 +181,94 @@ app.post("/send-email", async (req, res) => {
   }
 });
 
+// 4. POST /verify
+app.post("/verify", async (req, res) => {
+  const { token } = req.body;
+
+  if (!token) {
+    return res.status(400).json({ success: false, error: "Token is required." });
+  }
+
+  try {
+    if (db) {
+      const registrationsRef = db.collection("registrations");
+      const snapshot = await registrationsRef.where("tokenId", "==", token).limit(1).get();
+
+      if (snapshot.empty) {
+        return res.status(404).json({ success: false, error: "Registration not found." });
+      }
+
+      const doc = snapshot.docs[0];
+      const data = doc.data();
+
+      res.json({
+        success: true,
+        registration: {
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString()
+        }
+      });
+    } else {
+      // Mock mode
+      console.log("Mocking verification for token:", token);
+      res.json({
+        success: true,
+        registration: {
+          id: `mock-${Date.now()}`,
+          fullName: "Mock User",
+          email: "mock@example.com",
+          phone: "1234567890",
+          category: "Student",
+          tokenId: token,
+          entryScanned: false,
+          lunchScanned: false,
+          dinnerScanned: false,
+          createdAt: new Date().toISOString()
+        }
+      });
+    }
+  } catch (error) {
+    console.error("Verification error:", error);
+    res.status(500).json({ success: false, error: "Failed to verify token." });
+  }
+});
+
+// 5. POST /mark-used
+app.post("/mark-used", async (req, res) => {
+  const { id, scanType } = req.body;
+
+  if (!id || !scanType) {
+    return res.status(400).json({ success: false, error: "ID and scanType are required." });
+  }
+
+  try {
+    if (db) {
+      const docRef = db.collection("registrations").doc(id);
+      const doc = await docRef.get();
+
+      if (!doc.exists) {
+        return res.status(404).json({ success: false, error: "Registration not found." });
+      }
+
+      const updateData: any = {};
+      if (scanType === "entry") updateData.entryScanned = true;
+      if (scanType === "lunch") updateData.lunchScanned = true;
+      if (scanType === "dinner") updateData.dinnerScanned = true;
+
+      await docRef.update(updateData);
+      res.json({ success: true });
+    } else {
+      // Mock mode
+      console.log(`Mocking mark-used for ID: ${id}, type: ${scanType}`);
+      res.json({ success: true });
+    }
+  } catch (error) {
+    console.error("Mark-used error:", error);
+    res.status(500).json({ success: false, error: "Failed to mark as used." });
+  }
+});
+
 // Health check
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
