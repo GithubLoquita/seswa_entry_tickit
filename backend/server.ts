@@ -13,7 +13,8 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors({
   origin: ["https://seswa-entry-tickit.vercel.app", process.env.FRONTEND_URL || "*"],
-  methods: ["GET", "POST"],
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
 }));
 app.use(express.json({ limit: "10mb" })); // Increased limit for PDF base64
@@ -44,8 +45,13 @@ app.get("/", (req, res) => {
   res.json({ success: true, status: "API is running", timestamp: new Date().toISOString() });
 });
 
-// 1. POST /register
-app.post("/register", async (req, res) => {
+// Alias for health check
+app.get("/api", (req, res) => {
+  res.json({ success: true, status: "API is running", version: "1.0.0" });
+});
+
+// 1. POST /register (and /api/register)
+const handleRegister = async (req, res) => {
   const { fullName, email, phone, category, organization, numPersons, foodPreference, attending } = req.body;
 
   try {
@@ -108,10 +114,13 @@ app.post("/register", async (req, res) => {
     console.error("Registration error:", error);
     res.status(500).json({ success: false, error: "Failed to process registration." });
   }
-});
+};
 
-// 2. POST /send-whatsapp
-app.post("/send-whatsapp", async (req, res) => {
+app.post("/register", handleRegister);
+app.post("/api/register", handleRegister);
+
+// 2. POST /send-whatsapp (and /api/send-whatsapp)
+const handleWhatsApp = async (req, res) => {
   const { phone, fullName, tokenId, appUrl } = req.body;
 
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -139,10 +148,10 @@ app.post("/send-whatsapp", async (req, res) => {
     console.error("WhatsApp error:", error);
     res.status(500).json({ success: false, error: "Failed to send WhatsApp message" });
   }
-});
+};
 
-// 3. POST /send-email
-app.post("/send-email", async (req, res) => {
+// 3. POST /send-email (and /api/send-email)
+const handleEmail = async (req, res) => {
   const { email, fullName, tokenId, pdfBase64 } = req.body;
 
   const smtpHost = process.env.SMTP_HOST;
@@ -184,10 +193,13 @@ app.post("/send-email", async (req, res) => {
     console.error("Email error:", error);
     res.status(500).json({ success: false, error: "Failed to send email" });
   }
-});
+};
 
-// 4. POST /verify
-app.post("/verify", async (req, res) => {
+app.post("/send-email", handleEmail);
+app.post("/api/send-email", handleEmail);
+
+// 4. POST /verify (and /api/verify)
+const handleVerify = async (req, res) => {
   const { token } = req.body;
 
   if (!token) {
@@ -237,10 +249,13 @@ app.post("/verify", async (req, res) => {
     console.error("Verification error:", error);
     res.status(500).json({ success: false, error: "Failed to verify token." });
   }
-});
+};
 
-// 5. POST /mark-used
-app.post("/mark-used", async (req, res) => {
+app.post("/verify", handleVerify);
+app.post("/api/verify", handleVerify);
+
+// 5. POST /mark-used (and /api/mark-used)
+const handleMarkUsed = async (req, res) => {
   const { id, scanType } = req.body;
 
   if (!id || !scanType) {
@@ -272,7 +287,10 @@ app.post("/mark-used", async (req, res) => {
     console.error("Mark-used error:", error);
     res.status(500).json({ success: false, error: "Failed to mark as used." });
   }
-});
+};
+
+app.post("/mark-used", handleMarkUsed);
+app.post("/api/mark-used", handleMarkUsed);
 
 // Health check
 app.get("/health", (req, res) => {

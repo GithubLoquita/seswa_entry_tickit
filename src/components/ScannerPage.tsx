@@ -88,7 +88,10 @@ export default function ScannerPage() {
     setScannedUser(null);
 
     try {
-      const response = await fetch(`${API_URL}/verify`, {
+      const endpoint = `${API_URL}/verify`;
+      console.log(`Calling verification endpoint: ${endpoint}`);
+      
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
@@ -102,6 +105,9 @@ export default function ScannerPage() {
         data = JSON.parse(rawText);
       } catch (parseErr) {
         console.error("Failed to parse verification JSON:", parseErr);
+        if (rawText.toLowerCase().includes("<!doctype html>") || rawText.toLowerCase().includes("<html>")) {
+          throw new Error(`The server returned an HTML page instead of JSON. This usually means the API URL is incorrect or the route doesn't exist. URL: ${endpoint}`);
+        }
         throw new Error("Server returned an invalid response during verification.");
       }
 

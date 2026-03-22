@@ -29,7 +29,10 @@ export default function AdminDashboard() {
     setResendStatus(null);
     try {
       const pdfBase64 = await generatePassPDF(reg);
-      const response = await fetch(`${API_URL}/send-email`, {
+      const endpoint = `${API_URL}/send-email`;
+      console.log(`Calling resend-email endpoint: ${endpoint}`);
+      
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -48,6 +51,9 @@ export default function AdminDashboard() {
         result = JSON.parse(rawText);
       } catch (parseErr) {
         console.error("Failed to parse resend-email JSON:", parseErr);
+        if (rawText.toLowerCase().includes("<!doctype html>") || rawText.toLowerCase().includes("<html>")) {
+          throw new Error(`The server returned an HTML page instead of JSON. This usually means the API URL is incorrect or the route doesn't exist. URL: ${endpoint}`);
+        }
         throw new Error("Server returned an invalid response.");
       }
 

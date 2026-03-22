@@ -39,7 +39,10 @@ export default function RegistrationForm() {
 
     try {
       // 1. Register via Backend
-      const registerRes = await fetch(`${API_URL}/register`, {
+      const endpoint = `${API_URL}/register`;
+      console.log(`Calling registration endpoint: ${endpoint}`);
+      
+      const registerRes = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
@@ -53,6 +56,10 @@ export default function RegistrationForm() {
         registerData = JSON.parse(rawText);
       } catch (parseErr) {
         console.error("Failed to parse registration JSON:", parseErr);
+        // If it's HTML, it might be a 404 from Vercel or Render
+        if (rawText.toLowerCase().includes("<!doctype html>") || rawText.toLowerCase().includes("<html>")) {
+          throw new Error(`The server returned an HTML page instead of JSON. This usually means the API URL is incorrect or the route doesn't exist. URL: ${endpoint}`);
+        }
         throw new Error("Server returned an invalid response. Please try again later.");
       }
 
