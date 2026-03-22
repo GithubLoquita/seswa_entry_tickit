@@ -45,9 +45,19 @@ export default function RegistrationForm() {
         body: JSON.stringify(formData),
       });
 
-      const registerData = await registerRes.json();
-      if (!registerData.success) {
-        throw new Error(registerData.error || "Failed to register.");
+      const rawText = await registerRes.text();
+      console.log("Raw Registration Response:", rawText);
+
+      let registerData;
+      try {
+        registerData = JSON.parse(rawText);
+      } catch (parseErr) {
+        console.error("Failed to parse registration JSON:", parseErr);
+        throw new Error("Server returned an invalid response. Please try again later.");
+      }
+
+      if (!registerRes.ok || !registerData.success) {
+        throw new Error(registerData.error || registerData.message || "Failed to register.");
       }
 
       const registration = registerData.registration;

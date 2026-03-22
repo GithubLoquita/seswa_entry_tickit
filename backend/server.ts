@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "*",
+  origin: ["https://seswa-entry-tickit.vercel.app", process.env.FRONTEND_URL || "*"],
   methods: ["GET", "POST"],
   credentials: true
 }));
@@ -38,6 +38,11 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
 }
 
 // --- Endpoints ---
+
+// Root route for health check
+app.get("/", (req, res) => {
+  res.json({ success: true, status: "API is running", timestamp: new Date().toISOString() });
+});
 
 // 1. POST /register
 app.post("/register", async (req, res) => {

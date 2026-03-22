@@ -94,10 +94,19 @@ export default function ScannerPage() {
         body: JSON.stringify({ token }),
       });
 
-      const data = await response.json();
+      const rawText = await response.text();
+      console.log("Raw Verification Response:", rawText);
 
-      if (!data.success) {
-        throw new Error(data.error || "Verification failed.");
+      let data;
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseErr) {
+        console.error("Failed to parse verification JSON:", parseErr);
+        throw new Error("Server returned an invalid response during verification.");
+      }
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || data.message || "Verification failed.");
       }
 
       const userData = data.registration;
@@ -171,10 +180,19 @@ export default function ScannerPage() {
         body: JSON.stringify({ id: scannedUser.id, scanType }),
       });
 
-      const data = await response.json();
+      const rawText = await response.text();
+      console.log("Raw Mark-Used Response:", rawText);
 
-      if (!data.success) {
-        throw new Error(data.error || "Failed to mark as used.");
+      let data;
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseErr) {
+        console.error("Failed to parse mark-used JSON:", parseErr);
+        throw new Error("Server returned an invalid response during update.");
+      }
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || data.message || "Failed to mark as used.");
       }
       
       // Haptic feedback if supported
