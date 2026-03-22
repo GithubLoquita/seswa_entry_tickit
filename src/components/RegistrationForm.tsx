@@ -67,7 +67,7 @@ export default function RegistrationForm() {
 
       // 3. Send email via Backend
       try {
-        await fetch(`${API_URL}/send-email`, {
+        const emailRes = await fetch(`${API_URL}/send-email`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -77,13 +77,15 @@ export default function RegistrationForm() {
             pdfBase64,
           }),
         });
+        const emailRaw = await emailRes.text();
+        console.log("Raw Email Response:", emailRaw);
       } catch (emailErr) {
         console.error("Failed to send email:", emailErr);
       }
 
       // 4. Send WhatsApp via Backend
       try {
-        await fetch(`${API_URL}/send-whatsapp`, {
+        const waRes = await fetch(`${API_URL}/send-whatsapp`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -93,6 +95,8 @@ export default function RegistrationForm() {
             appUrl: window.location.origin,
           }),
         });
+        const waRaw = await waRes.text();
+        console.log("Raw WhatsApp Response:", waRaw);
       } catch (waErr) {
         console.error("Failed to send WhatsApp:", waErr);
       }

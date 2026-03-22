@@ -8,6 +8,8 @@ import { Search, Filter, Download, Users, Utensils, Calendar, CheckCircle2, XCir
 import { cn } from "../utils";
 import { downloadPDF, generateCompactTicketPDF, generatePassPDF } from "../PassGenerator";
 
+const API_URL = import.meta.env.VITE_API_URL || "";
+
 export default function AdminDashboard() {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,7 +29,7 @@ export default function AdminDashboard() {
     setResendStatus(null);
     try {
       const pdfBase64 = await generatePassPDF(reg);
-      const response = await fetch("/api/send-email", {
+      const response = await fetch(`${API_URL}/send-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -38,11 +40,21 @@ export default function AdminDashboard() {
         }),
       });
 
-      const result = await response.json();
-      if (result.success) {
-        setResendStatus({ id: reg.id!, success: true, message: "Email sent successfully!" });
+      const rawText = await response.text();
+      console.log("Raw Resend-Email Response:", rawText);
+
+      let result;
+      try {
+        result = JSON.parse(rawText);
+      } catch (parseErr) {
+        console.error("Failed to parse resend-email JSON:", parseErr);
+        throw new Error("Server returned an invalid response.");
+      }
+
+      if (!response.ok || !result.success) {
+        setResendStatus({ id: reg.id!, success: false, message: result.error || result.message || "Failed to send email" });
       } else {
-        setResendStatus({ id: reg.id!, success: false, message: result.error || "Failed to send email" });
+        setResendStatus({ id: reg.id!, success: true, message: "Email sent successfully!" });
       }
     } catch (error) {
       console.error("Resend error:", error);
